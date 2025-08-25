@@ -1,0 +1,10 @@
+[package]
+name = "zari"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.99"
+cpal = "0.16.0"
+hound = "3.5.1"
+rubato = "0.16.2"

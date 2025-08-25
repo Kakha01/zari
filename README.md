@@ -1,0 +1,3 @@
+Multi-Channel DAW (specifically for polyphonic voice recording)
+
+WIP...
