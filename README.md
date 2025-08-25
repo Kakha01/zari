@@ -1,3 +1,3 @@
-Multi-Channel DAW (specifically for polyphonic voice recording)
+Multi-Track DAW (specifically for polyphonic voice recording)
 
 WIP...
