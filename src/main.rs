@@ -2,17 +2,16 @@ use cpal::{
     self, SampleRate, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use hound;
 use std::path::Path;
 use zari::engine::Timeline;
 
-fn main() -> Result<(), hound::Error> {
+fn main() -> Result<(), anyhow::Error> {
     let sample_rate = 48000;
     let mut timeline = Timeline::new(sample_rate);
 
     let track_id_1 = timeline.new_track();
 
-    timeline.add_clip(track_id_1, Path::new("sample.wav"))?;
+    timeline.add_clip(track_id_1, Path::new("sample-i16-stereo.wav"))?;
 
     let host = cpal::default_host();
     let output_device = host.default_output_device().unwrap();

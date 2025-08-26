@@ -112,6 +112,17 @@ pub struct Clip {
     start_time_in_samples: u64,
 }
 
+#[allow(non_camel_case_types)]
+struct i24;
+impl i24 {
+    const MAX: i32 = 8_388_607;
+}
+
+const I8_SCALE: f32 = 1.0 / (i8::MAX as f32 + 1.0);
+const I16_SCALE: f32 = 1.0 / (i16::MAX as f32 + 1.0);
+const I24_SCALE: f32 = 1.0 / (i24::MAX as f32 + 1.0);
+const I32_SCALE: f32 = 1.0 / (i32::MAX as f32 + 1.0);
+
 impl Clip {
     pub fn from_path(
         path: &Path,
@@ -120,10 +131,35 @@ impl Clip {
     ) -> Result<Self, hound::Error> {
         let reader = hound::WavReader::open(path)?;
         let spec: hound::WavSpec = reader.spec();
-        let samples: Vec<f32> = reader
-            .into_samples::<f32>()
-            .map(|f| f.unwrap_or(0.0))
-            .collect();
+        dbg!(spec);
+        let samples: Vec<f32> = match spec.sample_format {
+            hound::SampleFormat::Int => match spec.bits_per_sample {
+                8 => reader
+                    .into_samples::<i8>()
+                    .map(|sample| sample.map_or(0.0, |s| s as f32 * I8_SCALE))
+                    .collect(),
+                16 => reader
+                    .into_samples::<i16>()
+                    .map(|sample| sample.map_or(0.0, |s| s as f32 * I16_SCALE))
+                    .collect(),
+                24 => reader
+                    .into_samples::<i32>()
+                    .map(|sample| sample.map_or(0.0, |s| s as f32 * I24_SCALE))
+                    .collect(),
+                32 => reader
+                    .into_samples::<i32>()
+                    .map(|sample| sample.map_or(0.0, |s| s as f32 * I32_SCALE))
+                    .collect(),
+                _ => return Err(hound::Error::Unsupported),
+            },
+            hound::SampleFormat::Float => match spec.bits_per_sample {
+                32 => reader
+                    .into_samples::<f32>()
+                    .map(|sample| sample.unwrap_or(0.0))
+                    .collect(),
+                _ => return Err(hound::Error::Unsupported),
+            },
+        };
 
         let data = if dbg!(spec.sample_rate) != timeline_sample_rate {
             Resampler::resample(
