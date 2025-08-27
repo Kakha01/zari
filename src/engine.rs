@@ -115,7 +115,7 @@ pub struct Clip {
 #[allow(non_camel_case_types)]
 struct i24;
 impl i24 {
-    const MAX: i32 = 8_388_607;
+    const MAX: i32 = 1 << 23;
 }
 
 const I8_SCALE: f32 = 1.0 / (i8::MAX as f32 + 1.0);
@@ -306,11 +306,11 @@ impl Timeline {
         self.tracks.iter_mut().find(|t| t.id == track_id)
     }
 
-    pub fn process(&mut self, num_samples: usize) -> Vec<[f32; 2]> {
-        let mut output_buffer: Vec<[f32; 2]> = Vec::new();
+    pub fn process(&mut self, num_samples: usize, num_channels: u16) -> Vec<Vec<f32>> {
+        let mut output_buffer: Vec<Vec<f32>> = Vec::with_capacity(num_samples);
 
         for _ in 0..num_samples {
-            let mut mix_bus: [f32; 2] = [0.0, 0.0];
+            let mut mix_bus: Vec<f32> = vec![0.0; num_channels as usize];
 
             for track in self.tracks.iter() {
                 if track.is_muted {
@@ -329,18 +329,23 @@ impl Timeline {
                         match clip.channel {
                             1 => {
                                 let sample_index = frame_within_clip as usize;
-                                let sample = clip.data[sample_index];
+                                let sample = clip.data[sample_index] * track.volume;
 
-                                mix_bus[0] += sample * track.volume;
-                                mix_bus[1] += sample * track.volume;
+                                for i in 0..num_channels as usize {
+                                    mix_bus[i] += sample;
+                                }
                             }
                             2 => {
                                 let sample_index = (frame_within_clip * 2) as usize;
-                                let sample1 = clip.data[sample_index];
-                                let sample2 = clip.data[sample_index + 1];
+                                let left = clip.data[sample_index] * track.volume;
+                                let right = clip.data[sample_index + 1] * track.volume;
 
-                                mix_bus[0] += sample1 * track.volume;
-                                mix_bus[1] += sample2 * track.volume;
+                                if num_channels == 1 {
+                                    mix_bus[0] += left + right;
+                                } else {
+                                    mix_bus[0] += left;
+                                    mix_bus[1] += right;
+                                }
                             }
                             _ => {}
                         }
