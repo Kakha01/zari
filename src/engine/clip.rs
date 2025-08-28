@@ -9,6 +9,14 @@ pub struct Clip {
 }
 
 impl Clip {
+    pub fn new(data: Vec<f32>, channel: u16, start_time_in_samples: u64) -> Self {
+        Clip {
+            data,
+            channel,
+            start_time_in_samples,
+        }
+    }
+
     pub fn duration_in_samples(&self) -> u64 {
         self.sample_count() as u64 / self.channel as u64
     }
@@ -33,8 +41,8 @@ impl Clip {
         self.data.len()
     }
 
-    pub fn from_path(
-        path: &Path,
+    pub fn from_path<P: AsRef<Path>>(
+        path: P,
         start_time_in_samples: u64,
         timeline_sample_rate: u32,
     ) -> Result<Self, AudioError> {
@@ -89,38 +97,42 @@ impl Clip {
 
     pub fn process_sample(
         &self,
-        mix_buffer: &mut Vec<f32>,
+        mix_buffer: &mut [f32],
         volume: f32,
         output_channels: u16,
         playhead_position: u64,
     ) {
         let frame_within_clip = playhead_position - self.start_time_in_samples;
 
-        if self.is_mono() {
-            if let Some(sample) = self.data.get(frame_within_clip as usize) {
-                for i in 0..output_channels as usize {
-                    mix_buffer[i] += sample * volume;
-                }
+        if self.is_mono()
+            && let Some(sample) = self.data.get(frame_within_clip as usize)
+        {
+            for item in mix_buffer.iter_mut().take(output_channels as usize) {
+                *item += sample * volume;
             }
         }
 
-        if self.is_stereo() {
-            if let Some(idx) = frame_within_clip
-                .checked_mul(2)
-                .and_then(|idx| Some(idx as usize))
-            {
-                if let (Some(left), Some(right)) = (self.data.get(idx), self.data.get(idx + 1)) {
-                    let left = left * volume;
-                    let right = right * volume;
+        if self.is_stereo()
+            && let Some(idx) = frame_within_clip.checked_mul(2).map(|idx| idx as usize)
+            && let (Some(left), Some(right)) = (self.data.get(idx), self.data.get(idx + 1))
+        {
+            let left = left * volume;
+            let right = right * volume;
 
-                    if output_channels == 1 {
-                        mix_buffer[0] += left + right;
-                    } else {
-                        mix_buffer[0] += left;
-                        mix_buffer[1] += right;
-                    }
-                }
+            if output_channels == 1 {
+                mix_buffer[0] += left + right;
+            } else {
+                mix_buffer[0] += left;
+                mix_buffer[1] += right;
             }
         }
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[test]
+//     fn
+// }

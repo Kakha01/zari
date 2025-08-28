@@ -2,7 +2,6 @@ use cpal::{
     self, BuildStreamError, SampleFormat, SampleRate,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use std::path::Path;
 use zari::engine::Timeline;
 
 fn main() -> Result<(), anyhow::Error> {
@@ -13,7 +12,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let track_id_1 = timeline.new_track();
 
-    timeline.add_clip(track_id_1, Path::new("sample-u8-stereo.wav"))?;
+    timeline.add_clip(track_id_1, "sample-u8-stereo.wav")?;
 
     let host = cpal::default_host();
     let output_device = host

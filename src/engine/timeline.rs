@@ -33,7 +33,11 @@ impl Timeline {
         track_id
     }
 
-    pub fn add_clip(&mut self, track_id: TrackId, path: &Path) -> Result<(), AudioError> {
+    pub fn add_clip<P: AsRef<Path>>(
+        &mut self,
+        track_id: TrackId,
+        path: P,
+    ) -> Result<(), AudioError> {
         let timeline_sample_rate = self.sample_rate;
 
         let track = self

@@ -43,7 +43,7 @@ impl Resampler {
         let waves_out: Vec<Vec<f32>> = resampler.process(&deinterleaved_samples, None)?;
 
         let num_channels = waves_out.len();
-        let num_frames = if let Some(wave) = waves_out.get(0) {
+        let num_frames = if let Some(wave) = waves_out.first() {
             wave.len()
         } else {
             return Ok(Vec::new());

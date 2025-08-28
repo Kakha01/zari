@@ -47,7 +47,7 @@ impl Track {
     pub fn new(id: TrackId) -> Self {
         Track {
             id,
-            name: format!("Track {}", id).into(),
+            name: format!("Track {}", id),
             ..Track::default()
         }
     }
@@ -117,14 +117,18 @@ impl Track {
 
     pub fn set_volume_percent(&mut self, percent: f32) -> Result<(), AudioError> {
         let volume = percent / 100.0;
-        if volume < 0.0 || volume > 1.0 {
+        if (0.0..=1.0).contains(&volume) {
             return Err(AudioError::InvalidVolume(volume));
         }
         self.volume = volume;
         Ok(())
     }
 
-    pub fn add_clip(&mut self, path: &Path, timeline_sample_rate: u32) -> Result<(), AudioError> {
+    pub fn add_clip<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+        timeline_sample_rate: u32,
+    ) -> Result<(), AudioError> {
         let start_time_in_samples: u64 = if let Some(c) = self.clips.last() {
             c.start_time_in_samples() + c.sample_count() as u64 + 1
         } else {
