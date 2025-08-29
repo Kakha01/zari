@@ -19,6 +19,42 @@ impl Utils {
             .map(|sample| Self::convert_sample_to_f64(*sample, scale))
             .collect()
     }
+
+    pub fn deinterleave_samples(samples: impl AsRef<[f64]>, num_channels: usize) -> Vec<Vec<f64>> {
+        let samples = samples.as_ref();
+
+        if samples.is_empty() || num_channels == 0 {
+            return vec![Vec::new(); num_channels];
+        }
+
+        (0..num_channels)
+            .map(|channel_idx| {
+                samples
+                    .iter()
+                    .skip(channel_idx)
+                    .step_by(num_channels)
+                    .copied()
+                    .collect()
+            })
+            .collect()
+    }
+
+    pub fn interleave_samples(channels: &[impl AsRef<[f64]>]) -> Vec<f64> {
+        if channels.is_empty() {
+            return Vec::new();
+        }
+
+        let channels: Vec<_> = channels.iter().map(|ch| ch.as_ref()).collect();
+        let max_frames = channels.iter().map(|ch| ch.len()).max().unwrap_or_default();
+
+        (0..max_frames)
+            .flat_map(|frame_idx| {
+                channels
+                    .iter()
+                    .map(move |channel| channel.get(frame_idx).copied().unwrap_or_default())
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -410,5 +446,78 @@ mod tests {
         for actual_val in result.iter() {
             assert!((actual_val - expected_value).abs() < f64::EPSILON);
         }
+    }
+
+    #[test]
+    fn test_interleave_samples_basic() {
+        let left_channel = vec![1.0, 3.0, 5.0];
+        let right_channel = vec![2.0, 4.0, 6.0];
+        let channels = vec![left_channel, right_channel];
+
+        let result = Utils::interleave_samples(&channels);
+        let expected = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_interleave_samples_uneven_lengths() {
+        let left_channel = vec![1.0, 3.0, 5.0, 7.0];
+        let right_channel = vec![2.0, 4.0];
+        let channels = vec![left_channel, right_channel];
+
+        let result = Utils::interleave_samples(&channels);
+        let expected = vec![1.0, 2.0, 3.0, 4.0, 5.0, 0.0, 7.0, 0.0];
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_interleave_samples_empty_channels() {
+        let empty_channels: Vec<Vec<f64>> = vec![];
+
+        let result = Utils::interleave_samples(&empty_channels);
+        let expected: Vec<f64> = vec![];
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_deinterleave_samples_basic() {
+        let interleaved = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+
+        let result = Utils::deinterleave_samples(interleaved, 2);
+        let expected = vec![vec![1.0, 3.0, 5.0], vec![2.0, 4.0, 6.0]];
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_interleave_deinterleave_roundtrip() {
+        let original_channels = vec![vec![1.0, 3.0, 5.0, 7.0], vec![2.0, 4.0, 6.0, 8.0]];
+
+        let interleaved = Utils::interleave_samples(&original_channels);
+
+        let result = Utils::deinterleave_samples(interleaved, 2);
+
+        assert_eq!(result, original_channels);
+    }
+
+    #[test]
+    fn test_deinterleave_samples_edge_cases() {
+        let empty_input: Vec<f64> = vec![];
+        let result1 = Utils::deinterleave_samples(empty_input, 2);
+        let expected1 = vec![vec![], vec![]];
+        assert_eq!(result1, expected1);
+
+        let some_input = vec![1.0, 2.0, 3.0, 4.0];
+        let result2 = Utils::deinterleave_samples(some_input, 0);
+        let expected2: Vec<Vec<f64>> = vec![];
+        assert_eq!(result2, expected2);
+
+        let mono_input = vec![1.0, 2.0, 3.0, 4.0];
+        let result3 = Utils::deinterleave_samples(mono_input, 1);
+        let expected3 = vec![vec![1.0, 2.0, 3.0, 4.0]];
+        assert_eq!(result3, expected3);
     }
 }
