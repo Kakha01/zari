@@ -12,7 +12,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let track_id_1 = timeline.new_track();
 
-    timeline.add_clip(track_id_1, "sample-u8-stereo.wav")?;
+    timeline.add_clip(track_id_1, "sample-f32-stereo.wav")?;
 
     let host = cpal::default_host();
     let output_device = host
@@ -46,7 +46,7 @@ fn main() -> Result<(), anyhow::Error> {
                     for (i, frame) in audio_block.iter().enumerate() {
                         for channel_idx in 0..config.channels as usize {
                             if let Some(sample) = frame.get(channel_idx) {
-                                data[i * config.channels as usize + channel_idx] = *sample;
+                                data[i * config.channels as usize + channel_idx] = *sample as f32;
                             }
                         }
                     }

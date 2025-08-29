@@ -6,7 +6,7 @@ pub struct Timeline {
     tracks: Vec<Track>,
     sample_rate: u32,
     playhead_position: u64,
-    mix_buffer: Vec<f32>,
+    mix_buffer: Vec<f64>,
 }
 
 impl Timeline {
@@ -140,8 +140,8 @@ impl Timeline {
         self.tracks.iter().find(|t| t.id == track_id)
     }
 
-    pub fn process(&mut self, num_samples: usize, output_channels: u16) -> Vec<Vec<f32>> {
-        let mut output_buffer: Vec<Vec<f32>> = Vec::with_capacity(num_samples);
+    pub fn process(&mut self, num_samples: usize, output_channels: u16) -> Vec<Vec<f64>> {
+        let mut output_buffer: Vec<Vec<f64>> = Vec::with_capacity(num_samples);
 
         for _ in 0..num_samples {
             self.mix_buffer.clear();
