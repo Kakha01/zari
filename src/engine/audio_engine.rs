@@ -1,11 +1,9 @@
 use cpal::{
-    BuildStreamError, Device, Host, SampleFormat, SampleRate, Stream, StreamError,
-    SupportedStreamConfig,
+    BuildStreamError, Device, SampleFormat, SampleRate, Stream, StreamError, SupportedStreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 
-use crate::engine::{Timeline, error::AudioError, utils::Utils};
-use core::time;
+use crate::engine::{Timeline, error::AudioError};
 use std::sync::{Arc, Mutex};
 
 pub struct AudioEngine {
@@ -15,7 +13,6 @@ pub struct AudioEngine {
     output_stream: Option<Stream>,
     input_stream: Option<Stream>,
     config: SupportedStreamConfig,
-    host: Host,
 }
 
 macro_rules! create_output_callback {
@@ -58,7 +55,6 @@ impl AudioEngine {
             output_stream: None,
             input_stream: None,
             config,
-            host,
         })
     }
 
@@ -131,16 +127,12 @@ impl AudioEngine {
             .as_ref()
             .ok_or(AudioError::OutputDeviceNotFound)?;
 
-        let timeline_clone = self.timeline.clone();
         let config = self.config.config();
-        let channels = config.channels;
 
         let stream = match self.config.sample_format() {
             SampleFormat::F32 => input_device.build_input_stream(
                 &config,
-                move |data: &[f32], _| {
-                    if let Ok(mut timeline) = timeline_clone.lock() {}
-                },
+                move |_data: &[f32], _| {},
                 Self::error_callback,
                 None,
             ),

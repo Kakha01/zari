@@ -1,4 +1,4 @@
-use std::{clone, fs::File, io::BufReader, ops::AddAssign, path::Path};
+use std::{fs::File, io::BufReader, ops::AddAssign, path::Path};
 
 use hound::WavReader;
 
