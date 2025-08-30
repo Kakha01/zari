@@ -1,3 +1,4 @@
+mod audio_engine;
 mod clip;
 mod error;
 mod resampler;
@@ -37,4 +38,39 @@ impl Scale {
     }
 }
 
+pub trait FromF64Sample {
+    fn from_f64_sample(sample: f64) -> Self;
+}
+
+impl FromF64Sample for u8 {
+    fn from_f64_sample(sample: f64) -> Self {
+        ((sample + 1.0) * 127.5) as u8
+    }
+}
+
+impl FromF64Sample for i16 {
+    fn from_f64_sample(sample: f64) -> Self {
+        (sample * i16::MAX as f64) as i16
+    }
+}
+
+impl FromF64Sample for i32 {
+    fn from_f64_sample(sample: f64) -> Self {
+        (sample * i32::MAX as f64) as i32
+    }
+}
+
+impl FromF64Sample for f32 {
+    fn from_f64_sample(sample: f64) -> Self {
+        sample as f32
+    }
+}
+
+impl FromF64Sample for f64 {
+    fn from_f64_sample(sample: f64) -> Self {
+        sample
+    }
+}
+
+pub use audio_engine::AudioEngine;
 pub use timeline::Timeline;

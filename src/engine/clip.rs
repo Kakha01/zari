@@ -1,8 +1,8 @@
-use std::{fs::File, io::BufReader, path::Path};
+use std::{clone, fs::File, io::BufReader, ops::AddAssign, path::Path};
 
 use hound::WavReader;
 
-use crate::engine::{AudioError, Resampler, Scale, utils::Utils};
+use crate::engine::{AudioError, FromF64Sample, Resampler, Scale, utils::Utils};
 
 #[derive(Debug)]
 pub struct Clip {
@@ -95,20 +95,45 @@ impl Clip {
         self.data.len()
     }
 
-    pub fn process_sample(
+    fn write_to_frame<T>(
+        buffer: &mut [T],
+        frame_index: usize,
+        channel: usize,
+        sample: T,
+        output_channels: u16,
+    ) where
+        T: AddAssign + Clone,
+    {
+        let position = frame_index * output_channels as usize + channel;
+        if let Some(s) = buffer.get_mut(position) {
+            *s += sample;
+        };
+    }
+
+    pub fn process_sample<T>(
         &self,
-        mix_buffer: &mut [f64],
+        buffer: &mut [T],
         volume: f32,
         output_channels: u16,
         playhead_position: u64,
-    ) {
+        frame_index: usize,
+    ) where
+        T: FromF64Sample + AddAssign + Clone,
+    {
         let frame_within_clip = playhead_position - self.start_time_in_samples;
 
         if self.is_mono()
             && let Some(sample) = self.data.get(frame_within_clip as usize)
         {
-            for item in mix_buffer.iter_mut().take(output_channels as usize) {
-                *item += sample * volume as f64;
+            let sample_t = T::from_f64_sample(sample * volume as f64);
+            for channel in 0..output_channels as usize {
+                Self::write_to_frame(
+                    buffer,
+                    frame_index,
+                    channel,
+                    sample_t.clone(),
+                    output_channels,
+                );
             }
         }
 
@@ -116,14 +141,15 @@ impl Clip {
             && let Some(idx) = frame_within_clip.checked_mul(2).map(|idx| idx as usize)
             && let (Some(left), Some(right)) = (self.data.get(idx), self.data.get(idx + 1))
         {
-            let left = left * volume as f64;
-            let right = right * volume as f64;
+            let left_t = T::from_f64_sample(left * volume as f64);
+            let right_t = T::from_f64_sample(right * volume as f64);
 
             if output_channels == 1 {
-                mix_buffer[0] += left + right;
+                let mono_sample = T::from_f64_sample((left + right) * volume as f64);
+                Self::write_to_frame(buffer, frame_index, 0, mono_sample, output_channels);
             } else {
-                mix_buffer[0] += left;
-                mix_buffer[1] += right;
+                Self::write_to_frame(buffer, frame_index, 0, left_t, output_channels);
+                Self::write_to_frame(buffer, frame_index, 1, right_t, output_channels);
             }
         }
     }

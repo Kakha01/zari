@@ -1,12 +1,11 @@
-use std::path::Path;
+use std::{ops::AddAssign, path::Path};
 
-use crate::engine::{AudioError, Track, TrackId};
+use crate::engine::{AudioError, FromF64Sample, Track, TrackId};
 
 pub struct Timeline {
     tracks: Vec<Track>,
     sample_rate: u32,
     playhead_position: u64,
-    mix_buffer: Vec<f64>,
 }
 
 impl Timeline {
@@ -15,7 +14,6 @@ impl Timeline {
             tracks: Vec::new(),
             sample_rate,
             playhead_position: 0,
-            mix_buffer: Vec::new(),
         }
     }
 
@@ -132,6 +130,10 @@ impl Timeline {
         self.playhead_position = (seconds * self.sample_rate as f64) as u64;
     }
 
+    pub fn reset_playhead(&mut self) {
+        self.playhead_position = 0;
+    }
+
     pub fn get_mut_track(&mut self, track_id: TrackId) -> Option<&mut Track> {
         self.tracks.iter_mut().find(|t| t.id == track_id)
     }
@@ -140,40 +142,43 @@ impl Timeline {
         self.tracks.iter().find(|t| t.id == track_id)
     }
 
-    pub fn process(&mut self, num_samples: usize, output_channels: u16) -> Vec<Vec<f64>> {
-        let mut output_buffer: Vec<Vec<f64>> = Vec::with_capacity(num_samples);
+    pub fn process<T>(&mut self, buffer: &mut [T], output_channels: u16)
+    where
+        T: FromF64Sample + Default + Clone + AddAssign,
+    {
+        let samples_per_frame = output_channels as usize;
+        let num_frames = buffer.len() / samples_per_frame;
 
-        for _ in 0..num_samples {
-            self.mix_buffer.clear();
-            self.mix_buffer.resize(output_channels as usize, 0.0);
+        buffer.fill(T::default());
 
+        for frame_idx in 0..num_frames {
             let soloed_track = self.tracks.iter().find(|t| t.is_soloed());
 
-            for track in self.tracks.iter() {
-                let should_play = if let Some(track_id) = soloed_track {
-                    track.id == track_id.id
-                } else {
-                    !track.is_muted()
-                };
-
-                if !should_play {
-                    continue;
-                }
-
-                if let Some(clip) = track.find_clip_at_playhead_position(self.playhead_position) {
+            self.tracks
+                .iter()
+                .filter(|track| {
+                    if let Some(soloed_track) = soloed_track {
+                        track.id == soloed_track.id
+                    } else {
+                        !track.is_muted()
+                    }
+                })
+                .filter_map(|track| {
+                    track
+                        .find_clip_at_playhead_position(self.playhead_position)
+                        .map(|clip| (clip, track.volume()))
+                })
+                .for_each(|(clip, volume)| {
                     clip.process_sample(
-                        &mut self.mix_buffer,
-                        track.volume(),
+                        buffer,
+                        volume,
                         output_channels,
                         self.playhead_position,
-                    );
-                }
-            }
+                        frame_idx,
+                    )
+                });
 
-            output_buffer.push(self.mix_buffer.clone());
             self.playhead_position += 1;
         }
-
-        output_buffer
     }
 }

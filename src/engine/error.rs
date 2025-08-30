@@ -22,4 +22,13 @@ pub enum AudioError {
 
     #[error("Unsupported bits per sample: {0}")]
     UnsupportedBitsPerSample(u16),
+
+    #[error("Output device not found")]
+    OutputDeviceNotFound,
+
+    #[error("Stream config not supported: {0}")]
+    StreamConfigNotSupported(#[from] cpal::BuildStreamError),
+
+    #[error("Play stream error: {0}")]
+    PlayStreamError(#[from] cpal::PlayStreamError),
 }
