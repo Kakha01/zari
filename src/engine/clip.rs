@@ -4,7 +4,7 @@ use hound::WavReader;
 
 use crate::engine::{AudioError, FromF64Sample, Resampler, Scale, utils::Utils};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Clip {
     data: Vec<f64>,
     channel: u16,

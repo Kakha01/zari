@@ -34,6 +34,7 @@ impl Display for TrackId {
     }
 }
 
+#[derive(Clone)]
 pub struct Track {
     pub id: TrackId,
     pub name: String,

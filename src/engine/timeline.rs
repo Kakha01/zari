@@ -1,9 +1,10 @@
-use std::{ops::AddAssign, path::Path};
+use std::{collections::HashSet, ops::AddAssign, path::Path};
 
 use crate::engine::{AudioError, FromF64Sample, Track, TrackId};
 
 pub struct Timeline {
     tracks: Vec<Track>,
+    active_track_ids: HashSet<TrackId>,
     sample_rate: u32,
     playhead_position: u64,
 }
@@ -12,6 +13,7 @@ impl Timeline {
     pub fn new(sample_rate: u32) -> Self {
         Timeline {
             tracks: Vec::new(),
+            active_track_ids: HashSet::new(),
             sample_rate,
             playhead_position: 0,
         }
@@ -26,6 +28,7 @@ impl Timeline {
 
         let track = Track::new(track_id);
 
+        self.active_track_ids.insert(track.id);
         self.tracks.push(track);
 
         track_id
@@ -71,24 +74,47 @@ impl Timeline {
         Ok(())
     }
 
-    pub fn toggle_mute(&mut self, track_id: TrackId) -> Result<(), AudioError> {
+    pub fn mute(&mut self, track_id: TrackId) -> Result<(), AudioError> {
         let track = self
             .get_mut_track(track_id)
             .ok_or(AudioError::TrackNotFound(track_id))?;
 
-        track.toggle_mute();
+        if !track.is_muted() {
+            track.mute();
+            track.unsolo();
+            self.active_track_ids.remove(&track_id);
+        }
 
         Ok(())
     }
 
-    pub fn toggle_solo(&mut self, track_id: TrackId) -> Result<(), AudioError> {
+    pub fn unmute(&mut self, track_id: TrackId) -> Result<(), AudioError> {
         let track = self
             .get_mut_track(track_id)
             .ok_or(AudioError::TrackNotFound(track_id))?;
 
-        if track.is_soloed() {
-            track.unsolo();
-        } else {
+        if track.is_muted() {
+            track.unmute();
+            self.active_track_ids.insert(track_id);
+        }
+
+        Ok(())
+    }
+
+    pub fn is_muted(&self, track_id: TrackId) -> Result<bool, AudioError> {
+        let track = self
+            .get_track(track_id)
+            .ok_or(AudioError::TrackNotFound(track_id))?;
+
+        Ok(track.is_muted())
+    }
+
+    pub fn solo(&mut self, track_id: TrackId) -> Result<(), AudioError> {
+        let track = self
+            .get_mut_track(track_id)
+            .ok_or(AudioError::TrackNotFound(track_id))?;
+
+        if !track.is_soloed() {
             track.solo();
             self.tracks
                 .iter_mut()
@@ -97,9 +123,34 @@ impl Timeline {
                     track.unsolo();
                     track.mute();
                 });
+            self.active_track_ids.clear();
+            self.active_track_ids.insert(track_id);
         }
 
         Ok(())
+    }
+
+    pub fn unsolo(&mut self, track_id: TrackId) -> Result<(), AudioError> {
+        let track = self
+            .get_mut_track(track_id)
+            .ok_or(AudioError::TrackNotFound(track_id))?;
+
+        if track.is_soloed() {
+            track.unsolo();
+            if track.is_muted() {
+                self.active_track_ids.remove(&track_id);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn is_soloed(&self, track_id: TrackId) -> Result<bool, AudioError> {
+        let track = self
+            .get_track(track_id)
+            .ok_or(AudioError::TrackNotFound(track_id))?;
+
+        Ok(track.is_soloed())
     }
 
     pub fn track_count(&self) -> usize {
@@ -180,5 +231,245 @@ impl Timeline {
 
             self.playhead_position += 1;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_toggle_mute() -> Result<(), anyhow::Error> {
+        let mut timeline = Timeline::new(44100);
+        let track_1 = timeline.new_track();
+        let track_2 = timeline.new_track();
+        let track_3 = timeline.new_track();
+
+        timeline.mute(track_2)?;
+
+        assert!(!timeline.is_muted(track_1)?);
+        assert!(timeline.is_muted(track_2)?);
+        assert!(!timeline.is_muted(track_3)?);
+
+        assert!(timeline.active_track_ids.contains(&track_1));
+        assert!(!timeline.active_track_ids.contains(&track_2));
+        assert!(timeline.active_track_ids.contains(&track_3));
+
+        timeline.unmute(track_2)?;
+
+        assert!(!timeline.is_muted(track_1)?);
+        assert!(!timeline.is_muted(track_2)?);
+        assert!(!timeline.is_muted(track_3)?);
+
+        assert!(timeline.active_track_ids.contains(&track_1));
+        assert!(timeline.active_track_ids.contains(&track_2));
+        assert!(timeline.active_track_ids.contains(&track_3));
+
+        timeline.mute(track_1)?;
+        timeline.mute(track_3)?;
+
+        assert!(timeline.is_muted(track_1)?);
+        assert!(!timeline.is_muted(track_2)?);
+        assert!(timeline.is_muted(track_3)?);
+
+        assert!(!timeline.active_track_ids.contains(&track_1));
+        assert!(timeline.active_track_ids.contains(&track_2));
+        assert!(!timeline.active_track_ids.contains(&track_3));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_toggle_solo() -> Result<(), anyhow::Error> {
+        let mut timeline = Timeline::new(44100);
+        let track_id = timeline.new_track();
+
+        timeline.solo(track_id)?;
+
+        assert!(timeline.is_soloed(track_id)?);
+        assert!(!timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+
+        timeline.unsolo(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(!timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_mute_solo_unsolo_unmute() -> Result<(), anyhow::Error> {
+        let mut timeline = Timeline::new(44100);
+        let track_id = timeline.new_track();
+        timeline.mute(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(timeline.is_muted(track_id)?);
+        assert!(!timeline.active_track_ids.contains(&track_id));
+
+        timeline.solo(track_id)?;
+
+        assert!(timeline.is_soloed(track_id)?);
+        assert!(timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+
+        timeline.unsolo(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(timeline.is_muted(track_id)?);
+        assert!(!timeline.active_track_ids.contains(&track_id));
+
+        timeline.unmute(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(!timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_mute_solo_unmute_unsolo() -> Result<(), anyhow::Error> {
+        let mut timeline = Timeline::new(44100);
+        let track_id = timeline.new_track();
+        timeline.mute(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(timeline.is_muted(track_id)?);
+        assert!(!timeline.active_track_ids.contains(&track_id));
+
+        timeline.solo(track_id)?;
+
+        assert!(timeline.is_soloed(track_id)?);
+        assert!(timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+
+        timeline.unmute(track_id)?;
+
+        assert!(timeline.is_soloed(track_id)?);
+        assert!(!timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+
+        timeline.unsolo(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(!timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_solo_mute_unsolo_unmute() -> Result<(), anyhow::Error> {
+        let mut timeline = Timeline::new(44100);
+        let track_id = timeline.new_track();
+        timeline.solo(track_id)?;
+
+        assert!(timeline.is_soloed(track_id)?);
+        assert!(!timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+
+        timeline.mute(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(timeline.is_muted(track_id)?);
+        assert!(!timeline.active_track_ids.contains(&track_id));
+
+        timeline.unsolo(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(timeline.is_muted(track_id)?);
+        assert!(!timeline.active_track_ids.contains(&track_id));
+
+        timeline.unmute(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(!timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_solo_mute_unmute_unsolo() -> Result<(), anyhow::Error> {
+        let mut timeline = Timeline::new(44100);
+        let track_id = timeline.new_track();
+        timeline.solo(track_id)?;
+
+        assert!(timeline.is_soloed(track_id)?);
+        assert!(!timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+
+        timeline.mute(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(timeline.is_muted(track_id)?);
+        assert!(!timeline.active_track_ids.contains(&track_id));
+
+        timeline.unmute(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(!timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+
+        timeline.unsolo(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(!timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_mute_solo_unsolo_unmute_relative_to_other_track() -> Result<(), anyhow::Error> {
+        let mut timeline = Timeline::new(44100);
+        let track_id = timeline.new_track();
+        let other_track_id = timeline.new_track();
+
+        timeline.mute(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(timeline.is_muted(track_id)?);
+        assert!(!timeline.active_track_ids.contains(&track_id));
+        assert!(timeline.active_track_ids.contains(&other_track_id));
+
+        timeline.solo(track_id)?;
+
+        assert!(timeline.is_soloed(track_id)?);
+        assert!(timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+        assert!(!timeline.active_track_ids.contains(&other_track_id));
+
+        timeline.unsolo(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(timeline.is_muted(track_id)?);
+        assert!(!timeline.active_track_ids.contains(&track_id));
+        assert!(!timeline.active_track_ids.contains(&other_track_id));
+
+        timeline.unmute(track_id)?;
+
+        assert!(!timeline.is_soloed(track_id)?);
+        assert!(!timeline.is_muted(track_id)?);
+        assert!(timeline.active_track_ids.contains(&track_id));
+        assert!(!timeline.active_track_ids.contains(&other_track_id));
+
+        Ok(())
+    }
+
+    fn test_with_solo_track_add_new_track() -> Result<(), anyhow::Error> {
+        let mut timeline = Timeline::new(44100);
+        let track_id = timeline.new_track();
+        timeline.solo(track_id)?;
+
+        let new_track_id = timeline.new_track();
+
+        // New track should be muted, as we have soloed track 
+        assert!(timeline.is_muted(track_id)?);
+
+        Ok(())
     }
 }
